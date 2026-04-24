@@ -12,7 +12,6 @@ button { flex:1 1 30%; padding:10px; margin:5px; }
 
 .list { margin-top:15px; background:white; border-radius:10px; padding:10px; }
 .item { display:flex; align-items:center; border-bottom:1px solid #eee; padding:8px; }
-.thumb { width:60px; height:45px; margin-right:10px; }
 .title { flex:1; cursor:pointer; }
 .del { color:red; margin-left:10px; cursor:pointer; }
 </style>
@@ -67,41 +66,31 @@ button { flex:1 1 30%; padding:10px; margin:5px; }
 
 <script>
 let player;
-let currentUrl="";
+let isReady=false;
 let isLoop=false;
 let seeking=false;
-let isReady=false;
+let currentUrl="";
 
-const urlInput=document.getElementById("url");
-const volumeEl=document.getElementById("volume");
-const speedEl=document.getElementById("speed");
-const seekEl=document.getElementById("seek");
-const timeEl=document.getElementById("time");
-const loopBtn=document.getElementById("loopBtn");
+const urlInput = document.getElementById("url");
+const volumeEl = document.getElementById("volume");
+const speedEl = document.getElementById("speed");
+const seekEl = document.getElementById("seek");
+const timeEl = document.getElementById("time");
+const loopBtn = document.getElementById("loopBtn");
 
-// ID取得
+// URL→ID
 function getId(url){
 try{
 const u=new URL(url);
 if(u.hostname.includes("youtu.be")) return u.pathname.slice(1);
 if(u.searchParams.get("v")) return u.searchParams.get("v");
-if(u.pathname.includes("/shorts/")) return u.pathname.split("/shorts/")[1];
-if(u.pathname.includes("/live/")) return u.pathname.split("/live/")[1];
 }catch(e){}
 return "";
 }
 
-// タイトル
-function getTitle(){
-try{
-return player?.getVideoData()?.title || currentUrl;
-}catch(e){}
-return currentUrl;
-}
-
 // 再生
 function play(urlArg){
-const url=urlArg || urlInput.value;
+const url = urlArg || urlInput.value;
 if(!url) return;
 
 urlInput.value=url;
@@ -119,9 +108,12 @@ config={videoId:id,playerVars:{autoplay:0}};
 }
 
 if(player){
-config.videoId
-? player.loadVideoById(config.videoId)
-: player.loadPlaylist({list:config.playerVars.list});
+if(config.videoId){
+player.loadVideoById(config.videoId);
+}else{
+player.loadPlaylist({list:config.playerVars.list});
+}
+setTimeout(()=>player.playVideo(),300);
 }else{
 player=new YT.Player("player",{
 height:"1",width:"1",
@@ -131,27 +123,11 @@ onReady:e=>{
 isReady=true;
 e.target.setVolume(volumeEl.value);
 e.target.setPlaybackRate(speedEl.value);
-
-// 🔥 スマホ対策
-setTimeout(()=>{ e.target.playVideo(); },300);
+setTimeout(()=>e.target.playVideo(),300);
 },
 onStateChange:e=>{
-if(e.data===YT.PlayerState.PLAYING) saveHistory(currentUrl);
-
-// 🔥 プレイリストループ対応
-if(e.data===YT.PlayerState.ENDED && isLoop){
-if(player.getPlaylist){
-const index=player.getPlaylistIndex();
-const list=player.getPlaylist();
-
-if(index === list.length-1){
-player.playVideoAt(0);
-}else{
-player.nextVideo();
-}
-}else{
-play(currentUrl);
-}
+if(e.data===YT.PlayerState.PLAYING){
+saveHistory(currentUrl);
 }
 }
 }
@@ -164,14 +140,14 @@ function togglePause(){
 if(!player||!isReady)return;
 player.getPlayerState()===1?player.pauseVideo():player.playVideo();
 }
-function next(){ if(player&&isReady) player.nextVideo(); }
-function prev(){ if(player&&isReady) player.previousVideo(); }
+function next(){ player?.nextVideo(); }
+function prev(){ player?.previousVideo(); }
 
 function cancel(){
 if(player){ player.destroy(); player=null; }
 isReady=false;
-urlInput.value="";
 currentUrl="";
+urlInput.value="";
 }
 
 // ループ
@@ -186,7 +162,7 @@ speedEl.onchange=e=>player?.setPlaybackRate(parseFloat(e.target.value));
 
 // シーク
 function updateSeek(){
-if(player&&isReady&&!seeking){
+if(player && isReady && !seeking){
 const d=player.getDuration();
 const c=player.getCurrentTime();
 if(d>0){
@@ -211,10 +187,33 @@ s=Math.floor(s);
 return Math.floor(s/60)+":"+(s%60).toString().padStart(2,"0");
 }
 
+// 🔥 スマホ対応ループ（本体）
+setInterval(()=>{
+if(!player || !isReady || !isLoop) return;
+
+const d = player.getDuration();
+const c = player.getCurrentTime();
+
+if(d > 0 && d - c < 0.5){
+if(player.getPlaylist){
+const index = player.getPlaylistIndex();
+const list = player.getPlaylist();
+if(list && index === list.length - 1){
+player.playVideoAt(0);
+}else{
+player.nextVideo();
+}
+}else{
+player.seekTo(0);
+player.playVideo();
+}
+}
+},300);
+
 // 保存
 function saveHistory(url){
 let h=JSON.parse(localStorage.getItem("history")||"[]");
-h.unshift({url,title:getTitle()});
+h.unshift({url:url});
 h=h.filter((v,i,a)=>a.findIndex(x=>x.url===v.url)===i).slice(0,10);
 localStorage.setItem("history",JSON.stringify(h));
 render();
@@ -222,7 +221,7 @@ render();
 
 function saveFav(){
 let f=JSON.parse(localStorage.getItem("fav")||"[]");
-f.unshift({url:currentUrl,title:getTitle()});
+f.unshift({url:currentUrl});
 f=f.filter((v,i,a)=>a.findIndex(x=>x.url===v.url)===i);
 localStorage.setItem("fav",JSON.stringify(f));
 render();
@@ -240,15 +239,17 @@ function render(){
 const h=JSON.parse(localStorage.getItem("history")||"[]");
 const f=JSON.parse(localStorage.getItem("fav")||"[]");
 
-document.getElementById("history").innerHTML=
+document.getElementById("history").innerHTML =
 h.map((v,i)=>`<div class="item">
-<span onclick="play('${v.url}')">${v.title}</span>
-<span onclick="del('history',${i})">削除</span></div>`).join("");
+<span class="title" onclick="play('${v.url}')">${v.url}</span>
+<span class="del" onclick="del('history',${i})">削除</span>
+</div>`).join("");
 
-document.getElementById("fav").innerHTML=
+document.getElementById("fav").innerHTML =
 f.map((v,i)=>`<div class="item">
-<span onclick="play('${v.url}')">★ ${v.title}</span>
-<span onclick="del('fav',${i})">削除</span></div>`).join("");
+<span class="title" onclick="play('${v.url}')">★ ${v.url}</span>
+<span class="del" onclick="del('fav',${i})">削除</span>
+</div>`).join("");
 }
 
 render();
