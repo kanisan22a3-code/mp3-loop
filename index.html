@@ -72,6 +72,14 @@ let isLoop=false;
 let seeking=false;
 let isReady=false;
 
+// 要素取得
+const urlInput = document.getElementById("url");
+const volumeEl = document.getElementById("volume");
+const speedEl = document.getElementById("speed");
+const loopBtn = document.getElementById("loopBtn");
+const seekEl = document.getElementById("seek");
+const timeEl = document.getElementById("time");
+
 // URL→ID
 function getId(url){
 try{
@@ -100,11 +108,11 @@ return currentUrl;
 }
 
 // 再生
-function play(urlInput){
-const url=urlInput||document.getElementById("url").value;
+function play(urlArg){
+const url=urlArg || urlInput.value;
 if(!url) return;
 
-document.getElementById("url").value=url;
+urlInput.value=url;
 currentUrl=url;
 
 let config={};
@@ -119,8 +127,9 @@ config={videoId:id,playerVars:{autoplay:1}};
 }
 
 if(player){
-config.videoId?player.loadVideoById(config.videoId)
-:player.loadPlaylist({list:config.playerVars.list});
+config.videoId
+? player.loadVideoById(config.videoId)
+: player.loadPlaylist({list:config.playerVars.list});
 }else{
 player=new YT.Player("player",{
 height:"1",width:"1",
@@ -128,8 +137,8 @@ height:"1",width:"1",
 events:{
 onReady:e=>{
 isReady=true;
-e.target.setVolume(volume.value);
-e.target.setPlaybackRate(speed.value);
+e.target.setVolume(volumeEl.value);
+e.target.setPlaybackRate(speedEl.value);
 },
 onStateChange:e=>{
 if(e.data===YT.PlayerState.PLAYING) saveHistory(currentUrl);
@@ -151,41 +160,48 @@ function prev(){ if(player && isReady) player.previousVideo(); }
 function cancel(){
 if(player){ player.destroy(); player=null; }
 isReady=false;
-document.getElementById("player").innerHTML="";
-document.getElementById("url").value="";
+urlInput.value="";
 currentUrl="";
 }
 
+// ループ
 function toggleLoop(){
 isLoop=!isLoop;
 loopBtn.textContent=isLoop?"ループON":"ループOFF";
 }
 
 // 音量・速度
-volume.oninput=e=>{ if(player && isReady) player.setVolume(e.target.value); };
-speed.onchange=e=>{ if(player && isReady) player.setPlaybackRate(parseFloat(e.target.value)); };
+volumeEl.addEventListener("input",e=>{
+if(player && isReady) player.setVolume(e.target.value);
+});
+speedEl.addEventListener("change",e=>{
+if(player && isReady) player.setPlaybackRate(parseFloat(e.target.value));
+});
 
-// 🔥 高精度シーク（修正版）
+// 🔥 シーク（完全安定版）
 function updateSeek(){
 if(player && isReady && !seeking){
 const d=player.getDuration();
 const c=player.getCurrentTime();
 if(d>0){
-seek.max=d;
-seek.value=c;
-time.textContent=format(c)+" / "+format(d);
+seekEl.max=d;
+seekEl.value=c;
+timeEl.textContent=format(c)+" / "+format(d);
 }
 }
 requestAnimationFrame(updateSeek);
 }
 updateSeek();
 
-seek.oninput=()=>{
+seekEl.addEventListener("input",()=>{
 if(!player || !isReady) return;
 seeking=true;
-player.seekTo(parseFloat(seek.value),true);
-};
-seek.onchange=()=>{ seeking=false; };
+player.seekTo(parseFloat(seekEl.value),true);
+});
+
+seekEl.addEventListener("change",()=>{
+seeking=false;
+});
 
 function format(s){
 s=Math.floor(s);
@@ -223,7 +239,7 @@ function render(){
 const h=JSON.parse(localStorage.getItem("history")||"[]");
 const f=JSON.parse(localStorage.getItem("fav")||"[]");
 
-document.getElementById("history").innerHTML=
+document.getElementById("history").innerHTML =
 h.map((v,i)=>`
 <div class="item">
 <img class="thumb" src="${getThumb(v.url)}">
@@ -231,7 +247,7 @@ h.map((v,i)=>`
 <span class="del" onclick="del('history',${i})">削除</span>
 </div>`).join("");
 
-document.getElementById("fav").innerHTML=
+document.getElementById("fav").innerHTML =
 f.map((v,i)=>`
 <div class="item">
 <img class="thumb" src="${getThumb(v.url)}">
