@@ -1,31 +1,81 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>YouTube音再生</title>
-
 <style>
-body { font-family:sans-serif; text-align:center; margin:20px; }
-input { width:100%; padding:10px; font-size:16px; }
-button { padding:10px; margin:5px; font-size:14px; }
-iframe { width:1px; height:1px; opacity:0; }
-.list { margin-top:20px; text-align:left; }
-.item { border-bottom:1px solid #ccc; padding:5px; font-size:14px; display:flex; justify-content:space-between; }
-.title { cursor:pointer; flex:1; }
-.del { color:red; cursor:pointer; margin-left:10px; }
+body {
+font-family: sans-serif;
+margin: 15px;
+background:#f5f5f5;
+}
+h3 { text-align:center; }
+
+input {
+width:100%;
+padding:12px;
+font-size:16px;
+border-radius:8px;
+border:1px solid #ccc;
+}
+
+button {
+padding:10px;
+margin:4px;
+border:none;
+border-radius:8px;
+background:#333;
+color:white;
+}
+
+#player { width:1px; height:1px; }
+
+.list {
+margin-top:15px;
+background:white;
+border-radius:10px;
+padding:10px;
+}
+
+.item {
+padding:8px;
+border-bottom:1px solid #eee;
+display:flex;
+justify-content:space-between;
+align-items:center;
+}
+
+.title {
+flex:1;
+cursor:pointer;
+}
+
+.active {
+background:#d0ebff;
+}
+
+.del {
+color:red;
+margin-left:10px;
+cursor:pointer;
+}
 </style>
 </head>
 <body>
 
-<h3>音だけ再生</h3>
+<h3>YouTube音プレイヤー</h3>
 
-<input type="text" id="url" placeholder="YouTube URL">
+<input id="url" placeholder="URL貼るだけ">
 <br>
 
 <button onclick="play()">再生</button>
+<button onclick="pause()">⏸</button>
+<button onclick="cancel()">✖</button>
 <button onclick="toggleLoop()" id="loopBtn">ループOFF</button>
-<button onclick="saveFav()">★お気に入り</button>
+<button onclick="saveFav()">★</button>
+
+<br><br>
+音量
+<input type="range" min="0" max="100" value="50" id="volume">
 
 <div id="player"></div>
 
@@ -37,98 +87,134 @@ iframe { width:1px; height:1px; opacity:0; }
 <div id="fav"></div>
 </div>
 
+<script src="https://www.youtube.com/iframe_api"></script>
+
 <script>
+let player;
 let isLoop = false;
+let currentUrl = "";
 
-function toggleLoop() {
-isLoop = !isLoop;
-document.getElementById("loopBtn").textContent =
-isLoop ? "ループON" : "ループOFF";
-}
-
-function getVideoId(url) {
-if (url.includes("v=")) return url.split("v=")[1].split("&")[0];
-if (url.includes("youtu.be")) return url.split("/").pop();
+function getId(url){
+if(url.includes("v=")) return url.split("v=")[1].split("&")[0];
+if(url.includes("youtu.be")) return url.split("/").pop();
 return "";
 }
 
-// タイトル取得（YouTubeのサムネから簡易）
-function getTitle(url) {
-const id = getVideoId(url);
-return id ? `https://img.youtube.com/vi/${id}/0.jpg` : url;
-}
-
-function play(urlInput) {
+function play(urlInput){
 const url = urlInput || document.getElementById("url").value;
-let embed = "";
+if(!url) return;
 
-if (url.includes("list=")) {
-const listId = url.split("list=")[1].split("&")[0];
-embed = `https://www.youtube.com/embed/videoseries?list=${listId}&loop=${isLoop?1:0}&autoplay=1`;
+currentUrl = url;
+
+let config = {};
+
+if(url.includes("list=")){
+const list = url.split("list=")[1].split("&")[0];
+config = {
+playerVars:{ listType:'playlist', list:list, autoplay:1 }
+};
 } else {
-const id = getVideoId(url);
-if (isLoop) {
-embed = `https://www.youtube.com/embed/${id}?loop=1&playlist=${id}&autoplay=1`;
+const id = getId(url);
+config = {
+videoId:id,
+playerVars:{ autoplay:1 }
+};
+}
+
+if(player){
+if(config.videoId){
+player.loadVideoById(config.videoId);
 } else {
-embed = `https://www.youtube.com/embed/${id}?autoplay=1`;
+player.loadPlaylist({list:config.playerVars.list});
+}
+} else {
+player = new YT.Player('player', {
+height:'1',
+width:'1',
+...config,
+events:{
+onReady:e=>{
+e.target.setVolume(document.getElementById("volume").value);
+},
+onStateChange:e=>{
+if(e.data===YT.PlayerState.ENDED && isLoop){
+play(currentUrl);
 }
 }
-
-document.getElementById("player").innerHTML =
-`<iframe src="${embed}" allow="autoplay"></iframe>`;
+}
+});
+}
 
 saveHistory(url);
+highlight(url);
 }
 
-function saveHistory(url) {
-let h = JSON.parse(localStorage.getItem("history") || "[]");
+function pause(){ if(player) player.pauseVideo(); }
+
+function cancel(){
+if(player){ player.destroy(); player=null; }
+document.getElementById("player").innerHTML="";
+}
+
+function toggleLoop(){
+isLoop=!isLoop;
+document.getElementById("loopBtn").textContent =
+isLoop?"ループON":"ループOFF";
+}
+
+document.getElementById("volume").addEventListener("input",e=>{
+if(player) player.setVolume(e.target.value);
+});
+
+// 保存系
+function saveHistory(url){
+let h = JSON.parse(localStorage.history||"[]");
 h.unshift(url);
-h = [...new Set(h)].slice(0, 10);
-localStorage.setItem("history", JSON.stringify(h));
-renderHistory();
+h=[...new Set(h)].slice(0,10);
+localStorage.history=JSON.stringify(h);
+render();
 }
 
-function saveFav() {
-const url = document.getElementById("url").value;
-let f = JSON.parse(localStorage.getItem("fav") || "[]");
+function saveFav(){
+let url=currentUrl;
+if(!url) return;
+let f=JSON.parse(localStorage.fav||"[]");
 f.unshift(url);
-f = [...new Set(f)];
-localStorage.setItem("fav", JSON.stringify(f));
-renderFav();
+f=[...new Set(f)];
+localStorage.fav=JSON.stringify(f);
+render();
 }
 
-function deleteItem(type, index) {
-let list = JSON.parse(localStorage.getItem(type) || "[]");
-list.splice(index, 1);
-localStorage.setItem(type, JSON.stringify(list));
-if (type === "history") renderHistory();
-else renderFav();
+function del(type,i){
+let list=JSON.parse(localStorage[type]||"[]");
+list.splice(i,1);
+localStorage[type]=JSON.stringify(list);
+render();
 }
 
-function renderHistory() {
-const h = JSON.parse(localStorage.getItem("history") || "[]");
+// 表示
+function render(){
+let h=JSON.parse(localStorage.history||"[]");
+let f=JSON.parse(localStorage.fav||"[]");
+
 document.getElementById("history").innerHTML =
-h.map((u,i) =>
-`<div class="item">
+h.map((u,i)=>`<div class="item">
 <span class="title" onclick="play('${u}')">${u}</span>
-<span class="del" onclick="deleteItem('history',${i})">削除</span>
-</div>`
-).join("");
-}
+<span class="del" onclick="del('history',${i})">削除</span>
+</div>`).join("");
 
-function renderFav() {
-const f = JSON.parse(localStorage.getItem("fav") || "[]");
 document.getElementById("fav").innerHTML =
-f.map((u,i) =>
-`<div class="item">
+f.map((u,i)=>`<div class="item">
 <span class="title" onclick="play('${u}')">★ ${u}</span>
-<span class="del" onclick="deleteItem('fav',${i})">削除</span>
-</div>`
-).join("");
+<span class="del" onclick="del('fav',${i})">削除</span>
+</div>`).join("");
 }
 
-renderHistory();
-renderFav();
+function highlight(url){
+document.querySelectorAll(".item").forEach(e=>e.classList.remove("active"));
+}
+
+render();
 </script>
 
 </body>
