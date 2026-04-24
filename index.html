@@ -66,31 +66,55 @@ button { flex:1 1 30%; padding:10px; margin:5px; }
 
 <script>
 let player;
-let isReady=false;
+let currentUrl="";
 let isLoop=false;
 let seeking=false;
-let currentUrl="";
+let isReady=false;
+let lastSavedUrl=""; // ★追加
 
-const urlInput = document.getElementById("url");
-const volumeEl = document.getElementById("volume");
-const speedEl = document.getElementById("speed");
-const seekEl = document.getElementById("seek");
-const timeEl = document.getElementById("time");
-const loopBtn = document.getElementById("loopBtn");
+const urlInput=document.getElementById("url");
+const volumeEl=document.getElementById("volume");
+const speedEl=document.getElementById("speed");
+const seekEl=document.getElementById("seek");
+const timeEl=document.getElementById("time");
+const loopBtn=document.getElementById("loopBtn");
 
-// URL→ID
+// ★強化版ID取得
 function getId(url){
 try{
 const u=new URL(url);
-if(u.hostname.includes("youtu.be")) return u.pathname.slice(1);
-if(u.searchParams.get("v")) return u.searchParams.get("v");
+
+if(u.hostname.includes("youtu.be")){
+return u.pathname.split("/")[1];
+}
+
+if(u.searchParams.get("v")){
+return u.searchParams.get("v");
+}
+
+if(u.pathname.includes("/shorts/")){
+return u.pathname.split("/shorts/")[1].split("?")[0];
+}
+
+if(u.pathname.includes("/live/")){
+return u.pathname.split("/live/")[1].split("?")[0];
+}
+
 }catch(e){}
 return "";
 }
 
+// タイトル
+function getTitle(){
+try{
+return player?.getVideoData()?.title || currentUrl;
+}catch(e){}
+return currentUrl;
+}
+
 // 再生
 function play(urlArg){
-const url = urlArg || urlInput.value;
+const url=urlArg || urlInput.value;
 if(!url) return;
 
 urlInput.value=url;
@@ -108,12 +132,9 @@ config={videoId:id,playerVars:{autoplay:0}};
 }
 
 if(player){
-if(config.videoId){
-player.loadVideoById(config.videoId);
-}else{
-player.loadPlaylist({list:config.playerVars.list});
-}
-setTimeout(()=>player.playVideo(),300);
+config.videoId
+? player.loadVideoById(config.videoId)
+: player.loadPlaylist({list:config.playerVars.list});
 }else{
 player=new YT.Player("player",{
 height:"1",width:"1",
@@ -123,16 +144,37 @@ onReady:e=>{
 isReady=true;
 e.target.setVolume(volumeEl.value);
 e.target.setPlaybackRate(speedEl.value);
-setTimeout(()=>e.target.playVideo(),300);
 },
 onStateChange:e=>{
 if(e.data===YT.PlayerState.PLAYING){
+if(currentUrl !== lastSavedUrl){
 saveHistory(currentUrl);
+lastSavedUrl=currentUrl;
+}
+}
+
+// ループ
+if(e.data===YT.PlayerState.ENDED && isLoop){
+if(player.getPlaylist){
+const index=player.getPlaylistIndex();
+const list=player.getPlaylist();
+
+if(index === list.length-1){
+player.playVideoAt(0);
+}else{
+player.nextVideo();
+}
+}else{
+play(currentUrl);
+}
 }
 }
 }
 });
 }
+
+// ★ここで再生（スマホ安定）
+setTimeout(()=> player?.playVideo(), 100);
 }
 
 // 操作
@@ -140,14 +182,14 @@ function togglePause(){
 if(!player||!isReady)return;
 player.getPlayerState()===1?player.pauseVideo():player.playVideo();
 }
-function next(){ player?.nextVideo(); }
-function prev(){ player?.previousVideo(); }
+function next(){ if(player&&isReady) player.nextVideo(); }
+function prev(){ if(player&&isReady) player.previousVideo(); }
 
 function cancel(){
 if(player){ player.destroy(); player=null; }
 isReady=false;
-currentUrl="";
 urlInput.value="";
+currentUrl="";
 }
 
 // ループ
@@ -160,9 +202,9 @@ loopBtn.textContent=isLoop?"ループON":"ループOFF";
 volumeEl.oninput=e=>player?.setVolume(e.target.value);
 speedEl.onchange=e=>player?.setPlaybackRate(parseFloat(e.target.value));
 
-// シーク
+// ★軽量化
 function updateSeek(){
-if(player && isReady && !seeking){
+if(player&&isReady&&!seeking){
 const d=player.getDuration();
 const c=player.getCurrentTime();
 if(d>0){
@@ -171,9 +213,8 @@ seekEl.value=c;
 timeEl.textContent=format(c)+" / "+format(d);
 }
 }
-requestAnimationFrame(updateSeek);
 }
-updateSeek();
+setInterval(updateSeek,500);
 
 seekEl.oninput=()=>{
 if(!player||!isReady)return;
@@ -187,33 +228,10 @@ s=Math.floor(s);
 return Math.floor(s/60)+":"+(s%60).toString().padStart(2,"0");
 }
 
-// 🔥 スマホ対応ループ（本体）
-setInterval(()=>{
-if(!player || !isReady || !isLoop) return;
-
-const d = player.getDuration();
-const c = player.getCurrentTime();
-
-if(d > 0 && d - c < 0.5){
-if(player.getPlaylist){
-const index = player.getPlaylistIndex();
-const list = player.getPlaylist();
-if(list && index === list.length - 1){
-player.playVideoAt(0);
-}else{
-player.nextVideo();
-}
-}else{
-player.seekTo(0);
-player.playVideo();
-}
-}
-},300);
-
 // 保存
 function saveHistory(url){
 let h=JSON.parse(localStorage.getItem("history")||"[]");
-h.unshift({url:url});
+h.unshift({url,title:getTitle()});
 h=h.filter((v,i,a)=>a.findIndex(x=>x.url===v.url)===i).slice(0,10);
 localStorage.setItem("history",JSON.stringify(h));
 render();
@@ -221,7 +239,7 @@ render();
 
 function saveFav(){
 let f=JSON.parse(localStorage.getItem("fav")||"[]");
-f.unshift({url:currentUrl});
+f.unshift({url:currentUrl,title:getTitle()});
 f=f.filter((v,i,a)=>a.findIndex(x=>x.url===v.url)===i);
 localStorage.setItem("fav",JSON.stringify(f));
 render();
@@ -239,17 +257,15 @@ function render(){
 const h=JSON.parse(localStorage.getItem("history")||"[]");
 const f=JSON.parse(localStorage.getItem("fav")||"[]");
 
-document.getElementById("history").innerHTML =
+document.getElementById("history").innerHTML=
 h.map((v,i)=>`<div class="item">
-<span class="title" onclick="play('${v.url}')">${v.url}</span>
-<span class="del" onclick="del('history',${i})">削除</span>
-</div>`).join("");
+<div class="title" onclick="play('${v.url}')">${v.title}</div>
+<span class="del" onclick="del('history',${i})">削除</span></div>`).join("");
 
-document.getElementById("fav").innerHTML =
+document.getElementById("fav").innerHTML=
 f.map((v,i)=>`<div class="item">
-<span class="title" onclick="play('${v.url}')">★ ${v.url}</span>
-<span class="del" onclick="del('fav',${i})">削除</span>
-</div>`).join("");
+<div class="title" onclick="play('${v.url}')">★ ${v.title}</div>
+<span class="del" onclick="del('fav',${i})">削除</span></div>`).join("");
 }
 
 render();
