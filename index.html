@@ -103,11 +103,14 @@ const id = getId(url);
 return id ? `https://img.youtube.com/vi/${id}/default.jpg` : "";
 }
 
-// タイトル取得（プレイヤーから）
+// タイトル安全取得
 function getTitle(){
+try{
 if(player && player.getVideoData){
-return player.getVideoData().title || currentUrl;
+const t = player.getVideoData().title;
+if(t) return t;
 }
+}catch(e){}
 return currentUrl;
 }
 
@@ -116,8 +119,8 @@ function play(urlInput){
 const url = urlInput || document.getElementById("url").value;
 if(!url) return;
 
-document.getElementById("url").value=url;
-currentUrl=url;
+document.getElementById("url").value = url;
+currentUrl = url;
 
 let config={};
 
@@ -126,6 +129,7 @@ const list=url.split("list=")[1].split("&")[0];
 config={playerVars:{listType:'playlist',list:list,autoplay:1}};
 }else{
 const id=getId(url);
+if(!id) return alert("URLが正しくない");
 config={videoId:id,playerVars:{autoplay:1}};
 }
 
@@ -145,7 +149,7 @@ e.target.setVolume(document.getElementById("volume").value);
 },
 onStateChange:e=>{
 if(e.data===YT.PlayerState.PLAYING){
-saveHistory(currentUrl); // タイトル取得後に保存
+saveHistory(currentUrl);
 }
 if(e.data===YT.PlayerState.ENDED && isLoop){
 play(currentUrl);
@@ -179,52 +183,68 @@ isLoop?"ループON":"ループOFF";
 }
 
 // 音量
-volume.oninput=e=>{
+document.getElementById("volume").addEventListener("input", e=>{
 if(player) player.setVolume(e.target.value);
-};
+});
 
-// 保存
+// 履歴保存
 function saveHistory(url){
-let h=JSON.parse(localStorage.history||"[]");
-h.unshift({url:url,title:getTitle()});
-h=h.filter((v,i,a)=>a.findIndex(x=>x.url===v.url)===i).slice(0,10);
-localStorage.history=JSON.stringify(h);
+let h = JSON.parse(localStorage.getItem("history") || "[]");
+
+h.unshift({
+url: url,
+title: getTitle()
+});
+
+h = h.filter((v,i,a)=>a.findIndex(x=>x.url===v.url)===i).slice(0,10);
+
+localStorage.setItem("history", JSON.stringify(h));
 render();
 }
 
+// お気に入り
 function saveFav(){
 if(!currentUrl) return;
-let f=JSON.parse(localStorage.fav||"[]");
-f.unshift({url:currentUrl,title:getTitle()});
-f=f.filter((v,i,a)=>a.findIndex(x=>x.url===v.url)===i);
-localStorage.fav=JSON.stringify(f);
+
+let f = JSON.parse(localStorage.getItem("fav") || "[]");
+
+f.unshift({
+url: currentUrl,
+title: getTitle()
+});
+
+f = f.filter((v,i,a)=>a.findIndex(x=>x.url===v.url)===i);
+
+localStorage.setItem("fav", JSON.stringify(f));
 render();
 }
 
 // 削除
 function del(type,i){
-let list=JSON.parse(localStorage[type]||"[]");
+let list = JSON.parse(localStorage.getItem(type) || "[]");
 list.splice(i,1);
-localStorage[type]=JSON.stringify(list);
+localStorage.setItem(type, JSON.stringify(list));
 render();
 }
 
 // 表示
 function render(){
-let h=JSON.parse(localStorage.history||"[]");
-let f=JSON.parse(localStorage.fav||"[]");
+let h = JSON.parse(localStorage.getItem("history") || "[]");
+let f = JSON.parse(localStorage.getItem("fav") || "[]");
 
-history.innerHTML = h.map((v,i)=>`
+document.getElementById("history").innerHTML =
+h.map((v,i)=>`
 <div class="item">
 <img class="thumb" src="${getThumb(v.url)}">
-<span class="title" onclick="play('${v.url}')">${v.title}</span>
+<span class="title" onclick="play('${v.url}')">${v.title || v.url}</span>
 <span class="del" onclick="del('history',${i})">削除</span>
 </div>`).join("");
 
-fav.innerHTML = f.map((v,i)=>`
+document.getElementById("fav").innerHTML =
+f.map((v,i)=>`
 <div class="item">
 <img class="thumb" src="${getThumb(v.url)}">
-<span class="title" onclick="play('${v.url}')">★ ${v.title}</span>
+<span class="title" onclick="play('${v.url}')">★ ${v.title || v.url}</span>
 <span class="del" onclick="del('fav',${i})">削除</span>
 </div>`).join("");
 }
