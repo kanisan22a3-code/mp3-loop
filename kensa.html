@@ -2,36 +2,35 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>TAL完全版（判定付き）</title>
+<title>TAL 完全版 FINAL</title>
 <style>
 body{margin:0;font-family:sans-serif;background:#f3f4f6;}
-.header{display:flex;justify-content:space-between;padding:15px 20px;}
-.box{background:#fff;margin:20px;border-radius:12px;padding:20px;}
+.header{display:flex;justify-content:space-between;padding:15px;}
+.box{background:#fff;margin:20px;padding:20px;border-radius:12px;}
 .container{display:flex;}
 .left{
   width:40%;
   display:grid;
   grid-template-columns:repeat(3,1fr);
-  gap:20px;
-  border-right:2px dashed #999;
+  gap:12px;
 }
-canvas.shape{width:80px;height:80px;cursor:pointer;}
-.selected{outline:4px solid red;}
-.right{width:60%;}
-button{padding:12px 30px;border-radius:10px;border:none;margin:10px;}
-.primary{background:#2563eb;color:white;}
+.shape{width:70px;height:70px;cursor:grab;}
+.right{width:60%;position:relative;}
+canvas{background:#fff;}
+button{padding:10px 20px;margin:10px;}
+.primary{background:#2563eb;color:#fff;border:none;}
 </style>
 </head>
 
 <body>
 
 <div class="header">
-  <div>問題 1 / 10</div>
-  <div>残り時間 <span id="time">90</span>s</div>
+<div>問題1</div>
+<div>残り <span id="time">90</span>s</div>
 </div>
 
 <div class="box">
-<p>左の図形の中から、右の図の線で囲まれた部分に入る図形をすべて選んでください。</p>
+<p>図形をドラッグして枠に入れてください（右クリック or Rキーで回転）</p>
 
 <div class="container">
 <div class="left" id="left"></div>
@@ -42,136 +41,186 @@ button{padding:12px 30px;border-radius:10px;border:none;margin:10px;}
 
 <div style="text-align:center;">
 <button onclick="reset()">リセット</button>
-<button class="primary" onclick="submit()">決定する</button>
+<button class="primary" onclick="submit()">判定</button>
 </div>
-
 </div>
 
 <script>
-// ===== 図形（当たり判定用：ポリゴン）=====
+
+// ===== 図形定義（ポリゴン）=====
+function circlePoints(r=30,n=20){
+  return Array.from({length:n},(_,i)=>{
+    let a=i/n*Math.PI*2;
+    return {x:40+r*Math.cos(a),y:40+r*Math.sin(a)};
+  });
+}
+
 const shapes = [
-  // 四角
   [{x:10,y:10},{x:70,y:10},{x:70,y:70},{x:10,y:70}],
-  // 三角
   [{x:40,y:10},{x:10,y:70},{x:70,y:70}],
-  // 五角形
-  [{x:40,y:10},{x:70,y:30},{x:60,y:70},{x:20,y:70},{x:10,y:30}],
-  // 円（近似）
-  Array.from({length:20},(_,i)=>{
-    let a=i/20*Math.PI*2;
-    return {x:40+30*Math.cos(a),y:40+30*Math.sin(a)};
-  }),
+  circlePoints(),
+  circlePoints(20,10),
+  [{x:40,y:5},{x:75,y:40},{x:40,y:75},{x:5,y:40}],
+  [{x:40,y:5},{x:75,y:25},{x:60,y:75},{x:20,y:75},{x:5,y:25}],
+  [{x:20,y:10},{x:60,y:10},{x:80,y:40},{x:60,y:70},{x:20,y:70},{x:0,y:40}],
+  [{x:30,y:10},{x:50,y:10},{x:50,y:30},{x:70,y:30},{x:70,y:50},{x:50,y:50},{x:50,y:70},{x:30,y:70},{x:30,y:50},{x:10,y:50},{x:10,y:30},{x:30,y:30}],
+  circlePoints(30,6),
+  circlePoints(30,5),
+  circlePoints(30,8),
+  circlePoints(25,16),
+  [{x:40,y:10},{x:60,y:40},{x:40,y:70},{x:20,y:40}],
+  [{x:20,y:20},{x:60,y:20},{x:70,y:70},{x:10,y:70}],
+  [{x:10,y:40},{x:50,y:10},{x:50,y:30},{x:70,y:30},{x:70,y:50},{x:50,y:50},{x:50,y:70}],
+  [{x:40,y:10},{x:70,y:40},{x:40,y:70},{x:10,y:40}],
+  circlePoints(30,12),
+  circlePoints(15,12),
+  [{x:30,y:10},{x:50,y:10},{x:60,y:40},{x:50,y:70},{x:30,y:70},{x:20,y:40}],
+  [{x:10,y:30},{x:70,y:30},{x:60,y:60},{x:20,y:60}]
 ];
 
 // ===== 左描画 =====
-const left = document.getElementById("left");
+const left=document.getElementById("left");
 
 shapes.forEach((poly,i)=>{
   const cv=document.createElement("canvas");
-  cv.width=80;cv.height=80;
+  cv.width=70;cv.height=70;
   cv.className="shape";
+  cv.draggable=true;
+
   const ctx=cv.getContext("2d");
+  drawPoly(ctx,poly);
 
-  ctx.beginPath();
-  poly.forEach((p,j)=>{
-    if(j===0) ctx.moveTo(p.x,p.y);
-    else ctx.lineTo(p.x,p.y);
-  });
-  ctx.closePath();
-  ctx.fillStyle=["blue","red","orange","gold"][i%4];
-  ctx.fill();
+  cv.ondragstart=e=>{
+    e.dataTransfer.setData("id",i);
+  };
 
-  cv.onclick=()=>cv.classList.toggle("selected");
   left.appendChild(cv);
 });
 
-// ===== 右の枠（台形）=====
-const polygon = [
+// ===== 描画関数 =====
+function drawPoly(ctx,poly){
+  ctx.beginPath();
+  poly.forEach((p,i)=>{
+    if(i===0) ctx.moveTo(p.x,p.y);
+    else ctx.lineTo(p.x,p.y);
+  });
+  ctx.closePath();
+  ctx.fillStyle="#3b82f6";
+  ctx.fill();
+}
+
+// ===== 右側 =====
+const canvas=document.getElementById("main");
+const ctx=canvas.getContext("2d");
+
+const polygon=[
   {x:260,y:120},
   {x:420,y:120},
   {x:480,y:250},
   {x:200,y:250}
 ];
 
-// 描画
-const c=document.getElementById("main").getContext("2d");
-c.lineWidth=4;
-c.beginPath();
-c.moveTo(200,250);
-c.lineTo(260,120);
-c.lineTo(420,120);
-c.lineTo(480,250);
-c.closePath();
-c.stroke();
+function drawFrame(){
+  ctx.beginPath();
+  ctx.moveTo(200,250);
+  ctx.lineTo(260,120);
+  ctx.lineTo(420,120);
+  ctx.lineTo(480,250);
+  ctx.closePath();
+  ctx.stroke();
+}
 
-// ===== 点が中か =====
-function inside(p, vs){
-  let x=p.x,y=p.y,inside=false;
-  for(let i=0,j=vs.length-1;i<vs.length;j=i++){
-    let xi=vs[i].x,yi=vs[i].y;
-    let xj=vs[j].x,yj=vs[j].y;
-    let intersect=((yi>y)!=(yj>y)) &&
-      (x<(xj-xi)*(y-yi)/(yj-yi)+xi);
+// ===== 配置 =====
+let placed=[];
+let selectedIndex=null;
+
+canvas.ondragover=e=>e.preventDefault();
+
+canvas.ondrop=e=>{
+  e.preventDefault();
+  const id=e.dataTransfer.getData("id");
+  const rect=canvas.getBoundingClientRect();
+
+  placed.push({
+    id,
+    x:e.clientX-rect.left,
+    y:e.clientY-rect.top,
+    rot:0,
+    scale:1
+  });
+  draw();
+};
+
+// ===== 回転 =====
+window.addEventListener("keydown",e=>{
+  if(e.key==="r" && placed.length){
+    placed[placed.length-1].rot+=Math.PI/4;
+    draw();
+  }
+});
+
+// ===== 描画 =====
+function draw(){
+  ctx.clearRect(0,0,600,350);
+  drawFrame();
+
+  placed.forEach(p=>{
+    ctx.save();
+    ctx.translate(p.x,p.y);
+    ctx.rotate(p.rot);
+    ctx.scale(p.scale,p.scale);
+    ctx.translate(-40,-40);
+    drawPoly(ctx,shapes[p.id]);
+    ctx.restore();
+  });
+}
+
+// ===== 判定 =====
+function inside(pt){
+  let inside=false;
+  for(let i=0,j=polygon.length-1;i<polygon.length;j=i++){
+    let xi=polygon[i].x,yi=polygon[i].y;
+    let xj=polygon[j].x,yj=polygon[j].y;
+
+    let intersect=((yi>pt.y)!=(yj>pt.y)) &&
+      (pt.x<(xj-xi)*(pt.y-yi)/(yj-yi)+xi);
+
     if(intersect) inside=!inside;
   }
   return inside;
 }
 
-// ===== 回転 =====
-function rotate(poly, angle){
-  const cx=40, cy=40;
-  return poly.map(p=>{
-    const x=p.x-cx, y=p.y-cy;
-    return {
-      x: x*Math.cos(angle)-y*Math.sin(angle)+cx,
-      y: x*Math.sin(angle)+y*Math.cos(angle)+cy
-    };
+// ポリゴン完全判定
+function fits(obj){
+  let poly=shapes[obj.id];
+
+  return poly.every(p=>{
+    let x=(p.x-40)*obj.scale;
+    let y=(p.y-40)*obj.scale;
+
+    let rx=x*Math.cos(obj.rot)-y*Math.sin(obj.rot);
+    let ry=x*Math.sin(obj.rot)+y*Math.cos(obj.rot);
+
+    return inside({
+      x:rx+obj.x,
+      y:ry+obj.y
+    });
   });
 }
 
-// ===== スケール =====
-function scale(poly, s){
-  return poly.map(p=>({
-    x:p.x*s,
-    y:p.y*s
-  }));
-}
-
-// ===== 平行移動 =====
-function translate(poly, dx, dy){
-  return poly.map(p=>({x:p.x+dx,y:p.y+dy}));
-}
-
-// ===== 判定（回転＋スケーリング総当たり）=====
-function fits(poly){
-  for(let s=1; s<4; s+=0.2){          // サイズ
-    for(let r=0; r<Math.PI*2; r+=Math.PI/8){ // 回転
-      let p = scale(poly, s);
-      p = rotate(p, r);
-      p = translate(p, 250, 150);
-
-      if(p.every(pt=>inside(pt, polygon))){
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-// ===== ボタン =====
-function reset(){
-  document.querySelectorAll(".shape").forEach(e=>e.classList.remove("selected"));
-}
-
+// ===== 判定ボタン =====
 function submit(){
-  const result=[];
-  document.querySelectorAll(".shape").forEach((el,i)=>{
-    if(el.classList.contains("selected")){
-      if(fits(shapes[i])) result.push(i);
-    }
+  let ok=0;
+  placed.forEach(p=>{
+    if(fits(p)) ok++;
   });
+  alert("完全に入った図形: "+ok+" / "+placed.length);
+}
 
-  alert("入る図形: "+result.join(", "));
+// ===== リセット =====
+function reset(){
+  placed=[];
+  draw();
 }
 
 // ===== タイマー =====
@@ -180,6 +229,10 @@ setInterval(()=>{
   t--;
   document.getElementById("time").textContent=t;
 },1000);
+
+// 初期描画
+draw();
+
 </script>
 
 </body>
