@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>TAL風 図形問題</title>
+
+<style>
+body{
+  margin:0;
+  font-family:sans-serif;
+  background:#f3f4f6;
+}
+
+.header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:15px 25px;
+  background:white;
+  border-bottom:1px solid #ddd;
+}
+
+.badge{
+  background:#2563eb;
+  color:white;
+  padding:8px 16px;
+  border-radius:20px;
+}
+
+.timer{
+  font-size:18px;
+}
+
+.main{
+  display:flex;
+  padding:20px;
+  gap:20px;
+}
+
+.left{
+  width:35%;
+  display:grid;
+  grid-template-columns:repeat(3, 90px);
+  gap:18px;
+  justify-content:center;
+}
+
+.shape{
+  width:90px;
+  height:90px;
+  background:white;
+  border-radius:10px;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  cursor:pointer;
+  border:2px solid transparent;
+}
+
+.shape.selected{
+  border:3px solid #2563eb;
+}
+
+.middle{
+  width:1px;
+  border-left:2px dashed #999;
+}
+
+.right{
+  flex:1;
+  background:white;
+  border-radius:12px;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+}
+
+.footer{
+  display:flex;
+  justify-content:center;
+  gap:20px;
+  padding:20px;
+}
+
+button{
+  padding:12px 30px;
+  border:none;
+  border-radius:25px;
+  font-size:16px;
+  cursor:pointer;
+}
+
+.reset{
+  background:#e5e7eb;
+}
+
+.submit{
+  background:#2563eb;
+  color:white;
+}
+</style>
+</head>
+
+<body>
+
+<div class="header">
+  <div class="badge">問題 1 / 1</div>
+  <div class="timer">残り時間 <span id="time">90</span></div>
+</div>
+
+<div class="main">
+
+  <div class="left" id="shapes"></div>
+
+  <div class="middle"></div>
+
+  <div class="right">
+    <canvas id="puzzle" width="500" height="350"></canvas>
+  </div>
+
+</div>
+
+<div class="footer">
+  <button class="reset" onclick="reset()">リセット</button>
+  <button class="submit" onclick="check()">決定する</button>
+</div>
+
+<script>
+
+// ===== 図形描画 =====
+const shapeList = [
+  (c)=>{c.fillStyle="green";c.fillRect(15,15,60,60)},
+  (c)=>{c.fillStyle="blue";c.beginPath();c.arc(45,45,30,0,Math.PI*2);c.fill()},
+  (c)=>{c.fillStyle="red";c.beginPath();c.moveTo(45,10);c.lineTo(80,80);c.lineTo(10,80);c.fill()},
+  (c)=>{c.fillStyle="orange";c.fillRect(20,20,50,50)},
+  (c)=>{c.fillStyle="yellow";c.beginPath();c.arc(45,45,30,0,Math.PI);c.fill()},
+  (c)=>{c.fillStyle="purple";c.beginPath();c.moveTo(45,10);c.lineTo(60,70);c.lineTo(10,30);c.lineTo(80,30);c.lineTo(30,70);c.fill()},
+];
+
+const container = document.getElementById("shapes");
+let selected = [];
+const correct = [0,2]; // 正解（仮）
+
+shapeList.forEach((draw,i)=>{
+  const el = document.createElement("div");
+  el.className = "shape";
+
+  const canvas = document.createElement("canvas");
+  canvas.width = 90;
+  canvas.height = 90;
+
+  const ctx = canvas.getContext("2d");
+  draw(ctx);
+
+  el.appendChild(canvas);
+
+  el.onclick = ()=>{
+    if(selected.includes(i)){
+      selected = selected.filter(v=>v!==i);
+      el.classList.remove("selected");
+    }else{
+      selected.push(i);
+      el.classList.add("selected");
+    }
+  };
+
+  container.appendChild(el);
+});
+
+
+// ===== 右の図 =====
+const ctx = document.getElementById("puzzle").getContext("2d");
+
+function draw(){
+  ctx.lineWidth = 4;
+
+  ctx.beginPath();
+  ctx.moveTo(120,280);
+  ctx.lineTo(180,150);
+  ctx.lineTo(350,150);
+  ctx.lineTo(400,280);
+  ctx.closePath();
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(180,150);
+  ctx.lineTo(230,80);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(350,150);
+  ctx.lineTo(420,120);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(120,280);
+  ctx.lineTo(50,230);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(300,280);
+  ctx.bezierCurveTo(350,330,280,350,350,400);
+  ctx.stroke();
+}
+
+draw();
+
+
+// ===== ボタン =====
+function reset(){
+  selected=[];
+  document.querySelectorAll(".shape").forEach(s=>s.classList.remove("selected"));
+}
+
+function check(){
+  const ok = correct.length === selected.length && correct.every(v=>selected.includes(v));
+  alert(ok ? "正解" : "不正解");
+}
+
+
+// ===== タイマー =====
+let t = 90;
+setInterval(()=>{
+  t--;
+  document.getElementById("time").innerText = t;
+  if(t<=0){
+    alert("時間切れ");
+  }
+},1000);
+
+</script>
+
+</body>
+</html>
